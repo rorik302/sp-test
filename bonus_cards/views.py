@@ -31,3 +31,16 @@ def create(request):
         return HttpResponse(serialize('json', [card]), content_type='application/json', status=201)
     except IntegrityError as e:
         return HttpResponse(status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete(request, pk):
+    '''Удаление карты'''
+    try:
+        card = BonusCard.objects.get(pk=pk)
+    except BonusCard.DoesNotExist:
+        return HttpResponse(status=404)
+    card.delete()
+    return HttpResponse(status=200)
+
