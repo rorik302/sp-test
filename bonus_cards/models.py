@@ -16,5 +16,10 @@ class BonusCard(models.Model):
                               ],
                               default="not activated")
 
+    class Meta:
+        db_table = 'bonus_cards'
+
     def __str__(self):
         return 'Bonus card {} № {}'.format(self.serial, self.number)
+
+
