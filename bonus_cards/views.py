@@ -1,5 +1,6 @@
 import json
 
+from django.core.exceptions import FieldError
 from django.core.serializers import serialize
 from django.db import IntegrityError
 from django.http import HttpResponse
@@ -11,9 +12,27 @@ from .models import BonusCard
 
 
 def bonus_cards_list_view(request):
-    '''Список карт'''
-    data = serialize('json', BonusCard.objects.all())
+    '''
+        Если в запросе есть query параметры, то выполняется поиск.
+        Если query параметров нет, то возвращается список всех карт
+    '''
+
+    if len(request.GET):
+        queryset = filter_by_query_params(request.GET)
+    else:
+        queryset = BonusCard.objects.all()
+    data = serialize('json', queryset)
     return HttpResponse(data, content_type='application/json')
+
+
+def filter_by_query_params(query_params):
+    filter_by = {}
+    for field, value in query_params.items():
+        filter_by.update({'{}__iexact'.format(field): value})
+    try:
+        return BonusCard.objects.filter(**filter_by)
+    except FieldError:
+        return []
 
 
 def parse_data(data):
@@ -25,6 +44,7 @@ def parse_data(data):
 @require_http_methods(["POST"])
 def create(request):
     '''Добавление карты'''
+
     data = parse_data(json.loads(request.body.decode('utf-8')))
     try:
         card = BonusCard.objects.create(**data)
@@ -37,10 +57,10 @@ def create(request):
 @require_http_methods(["DELETE"])
 def delete(request, pk):
     '''Удаление карты'''
+
     try:
         card = BonusCard.objects.get(pk=pk)
     except BonusCard.DoesNotExist:
         return HttpResponse(status=404)
     card.delete()
     return HttpResponse(status=200)
-
