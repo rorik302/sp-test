@@ -1,6 +1,6 @@
 import json
 
-from django.core.exceptions import FieldError
+from django.core.exceptions import FieldError, ValidationError
 from django.core.serializers import serialize
 from django.db import IntegrityError
 from django.http import HttpResponse
@@ -11,7 +11,7 @@ from django.views.decorators.http import require_http_methods
 from .models import BonusCard
 
 
-def bonus_cards_list_view(request):
+def list_view(request):
     '''
         Если в запросе есть query параметры, то выполняется поиск.
         Если query параметров нет, то возвращается список всех карт
@@ -21,23 +21,9 @@ def bonus_cards_list_view(request):
         queryset = filter_by_query_params(request.GET)
     else:
         queryset = BonusCard.objects.all()
+
     data = serialize('json', queryset)
     return HttpResponse(data, content_type='application/json')
-
-
-def filter_by_query_params(query_params):
-    filter_by = {}
-    for field, value in query_params.items():
-        filter_by.update({'{}__iexact'.format(field): value})
-    try:
-        return BonusCard.objects.filter(**filter_by)
-    except FieldError:
-        return []
-
-
-def parse_data(data):
-    data['expired_at'] = parse_date(data['expired_at'])
-    return data
 
 
 @csrf_exempt
@@ -46,11 +32,14 @@ def create(request):
     '''Добавление карты'''
 
     data = parse_data(json.loads(request.body.decode('utf-8')))
-    try:
-        card = BonusCard.objects.create(**data)
-        return HttpResponse(serialize('json', [card]), content_type='application/json', status=201)
-    except IntegrityError as e:
-        return HttpResponse(status=400)
+    card = BonusCard(**data)
+    if is_valid(card):
+        try:
+            card.save()
+            return HttpResponse(serialize('json', [card]), content_type='application/json', status=201)
+        except IntegrityError as e:
+            return HttpResponse(status=400)
+    return HttpResponse(status=400)
 
 
 @csrf_exempt
@@ -64,3 +53,34 @@ def delete(request, pk):
         return HttpResponse(status=404)
     card.delete()
     return HttpResponse(status=200)
+
+
+def filter_by_query_params(query_params):
+    '''
+        Фильтрация на основании параметров запроса.
+        Если запрос валидный, то фильтрует список карт и возвращает. Если невалидный, то возвращает пустой список.
+    '''
+
+    filter_by = {}
+    for field, value in query_params.items():
+        filter_by.update({'{}__iexact'.format(field): value})
+    try:
+        return BonusCard.objects.filter(**filter_by)
+    except FieldError:
+        return []
+
+
+def parse_data(data):
+    '''Преобразование входящих данных'''
+
+    data['expired_at'] = parse_date(data['expired_at'])
+    return data
+
+
+def is_valid(card):
+    '''Валидация данных'''
+    try:
+        card.clean_fields()
+    except ValidationError:
+        return False
+    return not BonusCard.objects.filter(serial=card.serial, number=card.number).exists()
